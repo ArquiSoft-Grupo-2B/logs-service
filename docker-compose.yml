@@ -1,38 +1,51 @@
 version: '3.9'
 
 services:
+  # 🧩 Servicio Loki (centraliza logs)
   loki:
     image: grafana/loki:2.9.1
     container_name: loki
-    user: '0'
-    ports:
-      - '3100:3100'
+    user: '0' # ejecuta como root (necesario para ciertos volúmenes)
     command: -config.file=/etc/loki/config.yaml
     volumes:
-      - ./loki-config.yml:/etc/loki/config.yaml:ro
-      - loki-data:/tmp/loki
+      - ./loki-config.yml:/etc/loki/config.yaml:ro  # Configuración de Loki
+      - loki-data:/tmp/loki                        # Datos persistentes
     restart: unless-stopped
+    # No se exponen puertos al host, Grafana se conecta por red interna
+    # ports:
+    #   - '3100:3100'
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  # 🧾 Servicio Promtail (colector de logs del sistema Docker)
   promtail:
     image: grafana/promtail:2.9.1
     container_name: promtail
+    command: -config.file=/etc/promtail/config.yaml
     volumes:
-      # Monta logs de contenedores Docker para que Promtail los lea
+      # Lee logs de contenedores Docker
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      # Monta configuración de Promtail
+      # Configuración de Promtail
       - ./promtail-config.yaml:/etc/promtail/config.yaml:ro
       - promtail-positions:/tmp
-    command: -config.file=/etc/promtail/config.yaml
     depends_on:
       - loki
     restart: unless-stopped
+    networks:
+      - backend_net
 
+  # 📊 Servicio Grafana (interfaz de monitoreo y visualización)
   grafana:
     image: grafana/grafana:11.1.0
     container_name: grafana
     ports:
-      - '3030:3000'
+      - '3030:3000'  # Solo Grafana se expone al host
     volumes:
       - grafana-data:/var/lib/grafana
     environment:
@@ -41,13 +54,16 @@ services:
     depends_on:
       - loki
     restart: unless-stopped
+    networks:
+      - backend_net
 
+# 📦 Volúmenes persistentes
 volumes:
   loki-data:
   promtail-positions:
   grafana-data:
 
+# 🌐 Red compartida con otros microservicios (externa)
 networks:
-  default:
-    name: routes_shared_network
+  backend_net:
     external: true
