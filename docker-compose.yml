@@ -44,8 +44,6 @@ services:
   grafana:
     image: grafana/grafana:11.1.0
     container_name: grafana
-    ports:
-      - '3030:3000'  # Solo Grafana se expone al host
     volumes:
       - grafana-data:/var/lib/grafana
     environment:
